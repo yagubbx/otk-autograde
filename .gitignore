@@ -1,0 +1,15 @@
+# Gizli tənzimləmələr
+.env
+
+# Python tullantıları
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Verilənlər bazası (Lokal bazanı yükləməyək)
+*.db
+
+# VS Code tənzimləmələri
+.vscode/

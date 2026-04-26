@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+openai
+python-dotenv
+sqlalchemy
+aiosqlite
+loguru
+python-multipart
