@@ -1,0 +1,30 @@
+Sistemi qüsursuzlaşdırmaq (perfection) üçün qarşımızda 3 böyük dağ (hədəf) var. Hansına hücum edəcəyimizi sən seç:
+
+🚀 1. Kütləvi Qiymətləndirmə (Batch Processing) + Asinxron Sürət
+Hazırda müəllim məcburdur ki, şagirdlərin şəkillərini və ya mətnlərini bir-bir sistemə yükləsin.
+
+Nə edəcəyik? Sistemə "Toplu Yükləmə" (məsələn, 30 şagirdin cavabları olan CSV/Excel faylı və ya şəkillər olan ZIP qovluğu) xüsusiyyəti əlavə edəcəyik.
+
+Mühəndislik sehri: Sənin qurduğun FastAPI əslində asinxrondur (async/await). Biz asyncio.gather istifadə edərək 30 şagirdi növbəyə salmadan, eyni anda, paralel olaraq yoxlayacağıq. Bu, 30 dəqiqəlik işi 20 saniyəyə endirmək demətdir.
+
+🧠 2. Mütləq Sıfır Xəta: OpenAI Structured Outputs
+Hazırda biz AI-a "Bax, mənə JSON qaytar ha!" deyirik və response_format={"type": "json_object"} istifadə edirik. Bu 95% işləyir, amma ən son texnologiya deyil.
+
+Nə edəcəyik? OpenAI-ın ən yeni "Structured Outputs" (beta.chat.completions.parse) funksiyasına keçid edəcəyik. Sənin yazdığın Pydantic (EvaluationResponse) strukturunu birbaşa modelin beyninə "inject" edəcəyik.
+
+Mühəndislik sehri: Bu arxitektura AI-ın struktur xətası (hallüsinasiya) etmə ehtimalını riyazi olaraq 0%-ə endirir. Bu, Agentic arxitekturaların ən ali səviyyəsidir.
+
+📊 3. Analitika Paneli və Excel İxracı (Dashboarding)
+Müəllimlər və məktəb rəhbərliyi tək-tək ballara baxmaq istəmir. Onlar ümumi mənzərəni görmək istəyirlər.
+
+Nə edəcəyik? Streamlit-də ayrıca bir "Statistika" səhifəsi yaradacağıq. Verilənlər bazasındakı (otk_database.db) məlumatları çəkib sinfin ortalama balını, ən çox edilən səhvləri vizual qrafiklərlə (Pie chart, Bar chart) göstərəcəyik.
+
+Mühəndislik sehri: Yekunda bütün nəticələri bir kliklə Excel (.xlsx) faylı olaraq endirmək funksiyası quracağıq. Müəllim yoxlamanı bitirib nəticəni jurnalına köçürə biləcək.
+
+Hansı sənə daha çox "challenge" (meydan oxuma) kimi gəlir?
+
+Mühərriki paralel işlədək (Seçim 1)?
+
+AI-ın formatını qandallayaq (Seçim 2)?
+
+Yoxsa rəhbərliyin gözünü qamaşdıracaq analitikanı yığaq (Seçim 3)?
