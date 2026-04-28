@@ -1,75 +1,73 @@
-# app/services/ai/providers/openai_provider.py
+# app/services/ai/openai_provider.py
+import os
 from openai import AsyncOpenAI
-import json
-from app.core.config import settings
-from app.schemas.evaluation import EvaluationResponse
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
+load_dotenv()
 
+# Asinxron OpenAI müştərisini başladırıq
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ---------------------------------------------------------------------------
+# HAKİM AGENTİN ÇIXIŞ SXEMİ (STRUCTURED OUTPUT ÜÇÜN)
+# AI yalnız bu üç dəyəri düşünəcək və tam bu strukturda OBYEKT qaytaracaq
+# ---------------------------------------------------------------------------
+class JudgeOutput(BaseModel):
+    verilen_bal: float = Field(
+        description="Şagirdin topladığı yekun bal (yalnız meyardakı icazə verilən rəqəmlər: 0, 0.3333, 0.5, 0.6667, 1)"
+    )
+    serh: str = Field(
+        description="Şagirdin hansı meyarı ödəyib/ödəmədiyi barədə sərt müəllim şərhi"
+    )
+    confidence_score: float = Field(
+        description="AI-ın bu qərardakı əminlik dərəcəsi (0.0 ilə 1.0 arasında)"
+    )
 
 class OpenAIProvider:
-    def __init__(self):
-        # Asinxron klient yaradırıq (Sürət üçün)
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = "gpt-4o" # Vision (şəkil oxuma) dəstəkləyən model
-        
-
-    async def evaluate_submission(self, system_prompt: str, user_content: list) -> EvaluationResponse:
+    
+    # -----------------------------------------------------------------------
+    # 1. GÖZ AGENTİ (VISION) - Yalnız oxuyur və MƏTN (String) qaytarır
+    # -----------------------------------------------------------------------
+    @staticmethod
+    async def call_vision_agent(messages: list) -> str:
         """
-        AI-ya sorğu göndərir və nəticəni Pydantic modelinə çevirib qaytarır.
-        """
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.0, # ÇOX VACİB: Hallucination-u sıfıra endirir, stabil cavab verir
-                max_tokens=500,
-                response_format={ "type": "json_object" } # AI-ı JSON qaytarmağa məcbur edir
-            )
-            
-            # AI-dan gələn xam (raw) mətni alırıq
-            raw_response = response.choices[0].message.content
-            
-            # Mətni JSON obyektinə çeviririk (Dictionary)
-            json_data = json.loads(raw_response)
-            
-            # Bura bir az "hiylədir". Pydantic modelimizi (EvaluationResponse)
-            # yaratmaq üçün saxta ID-lər qoyuruq. Əsl ID-ləri Orchestrator təyin edəcək.
-            return EvaluationResponse(
-                sagird_id="temp",
-                sual_id="temp",
-                verilen_bal=json_data.get("verilen_bal", 0.0),
-                serh=json_data.get("serh", "Şərh yoxdur"),
-                confidence_score=json_data.get("confidence_score", 0.8)
-            )
-            
-        except Exception as e:
-            # Əgər API çökərsə və ya pul bitərsə, sistem çökməsin deyə xəta atırıq
-            raise ValueError(f"OpenAI xətası baş verdi: {str(e)}")
-    async def extract_text_from_image(self, system_prompt: str, image_base64: str) -> str:
-        """
-        Şəkli OpenAI-a göndərib ondan təmiz mətn (transkripsiya) alır.
+        Şəkilləri OCR və Semantik Bərpa üçün OpenAI Vision modelinə göndərir.
+        Burada klassik '.create' istifadə edirik, çünki bizə sadəcə Markdown/Mətn lazımdır.
         """
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user", 
-                        "content": [
-                            {"type": "text", "text": "Bu şəkildəki əl yazmasını diqqətlə oxu və təlimata uyğun mətni çıxar:"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}", "detail": "high"}}
-                        ]
-                    }
-                ],
-                temperature=0.0, # Yenə sıfır edirik ki, AI özündən nəsə uydurmasın
-                max_tokens=1000
-                # Diqqət: Burada response_format yoxdur, çünki bizə JSON yox, sadəcə mətn lazımdır!
+            response = await client.chat.completions.create(
+                model="gpt-4o",  # Vision dəstəkləyən model
+                messages=messages,
+                temperature=0.0, # Uydurmanın (Hallüsinasiyanın) qarşısını almaq üçün 0.0
+                max_tokens=1500
             )
             return response.choices[0].message.content
         except Exception as e:
-            raise ValueError(f"Şəkli oxuyarkən OpenAI xətası: {str(e)}")
-    
+            raise Exception(f"Göz Agenti (Vision) xətası: {str(e)}")
+
+    # -----------------------------------------------------------------------
+    # 2. HAKİM AGENT (JUDGE) - Qiymətləndirir və OBYEKT (Pydantic) qaytarır
+    # -----------------------------------------------------------------------
+    @staticmethod
+    async def call_judge_agent(messages: list) -> JudgeOutput:
+        """
+        Hakim Agent üçün STRUCTURED OUTPUTS (beta.parse) zəngi.
+        Bu metod string YOX, birbaşa yoxlanılmış Pydantic obyekti (JudgeOutput) qaytarır!
+        JSONDecodeError ehtimalı tamamilə SIFIRDIR.
+        """
+        try:
+            # SEHR BURADADIR: client.beta.chat.completions.parse
+            response = await client.beta.chat.completions.parse(
+                model="gpt-4o", # Structured Outputs gpt-4o və gpt-4o-mini-də dəstəklənir
+                messages=messages,
+                response_format=JudgeOutput,
+                temperature=0.0 # Maksimum obyektivlik və dəqiqlik
+            )
+            
+            # Obyekt artıq AI tərəfindən tam doldurulub və validasiya edilib
+            # Bizə birbaşa Python obyekti (JudgeOutput) qayıdır
+            return response.choices[0].message.parsed
+        
+        except Exception as e:
+            raise Exception(f"Hakim Agent xətası: {str(e)}")
